@@ -404,7 +404,75 @@ app.get('/api/key-by-ip', rateLimit(60000, 30), (req, res) => {
 });
 
 // ============================================================
-// PUBLIC API — Plugin Tracking
+// PUBLIC API — Plugin Tracking & Verification (Unified)
+// ============================================================
+
+app.post('/api/verify_activity', rateLimit(60000, 120), (req, res) => {
+    try {
+        const key = cleanInput(req.body.key);
+        const deviceId = cleanInput(req.body.device_id);
+        const deviceModel = cleanInput(req.body.device_model || '');
+        const pluginName = safeDecodePlugin(req.body.plugin_name || '');
+        const action = cleanInput(req.body.action || 'OPEN').toUpperCase();
+        const data = cleanInput(req.body.data || '');
+        const ip = getClientIP(req);
+
+        // Swap temporary browser/cookie device from repo.json with actual permanent Android ID
+        const cookieId = req.cookies && req.cookies.cs_device_id;
+        if (cookieId && cookieId !== deviceId && key) {
+            db.replaceTemporaryDevice(key, cookieId, deviceId, ip);
+        }
+
+        if (!key || !deviceId || deviceId.toLowerCase() === 'unknown' || deviceId.toLowerCase() === 'null') {
+            return res.json({ status: 'error', message: 'License Key dan Device ID valid diperlukan.' });
+        }
+
+        // Use deviceModel as deviceName if provided
+        const deviceName = deviceModel ? deviceModel : `Android (${deviceId.substring(0, 6)})`;
+
+        // Full validation (auto-registers device if under limit and not blocked)
+        const result = db.validateLicense(key, ip, deviceId, deviceName, action);
+
+        if (!result.valid) {
+            const msgs = {
+                not_found: 'Lisensi tidak ditemukan',
+                revoked: 'Lisensi telah dicabut oleh admin',
+                expired: 'Lisensi telah kadaluarsa',
+                max_devices: 'Batas perangkat maksimal tercapai',
+                device_blocked: 'Perangkat ini diblokir',
+                ip_blocked: 'IP ini diblokir'
+            };
+            db.logAccess(key, 'VERIFY_FAIL', ip, `reason:${result.reason} action:${action} plugin:${pluginName}`, deviceId);
+            return res.json({ status: 'error', message: msgs[result.reason] || 'Akses ditolak', reason: result.reason });
+        }
+
+        // Log device registration if it's new
+        if (result.isNewDevice) {
+            db.logAccess(key, 'DEVICE_REGISTERED', ip, `device:${deviceId} model:${deviceModel} plugin:${pluginName} via verify_activity`, deviceId);
+        }
+
+        // Track plugin usage & playback
+        if (pluginName && action) {
+            if (action === 'PLAY' || action === 'DOWNLOAD') {
+                db.trackPlayback(key, deviceId, pluginName, data || 'Unknown Video', action, ip);
+                db.logAccess(key, action, ip, `plugin:${pluginName} data:${data} device:${deviceId}`, deviceId);
+            } else {
+                db.trackPluginUsage(key, deviceId, pluginName, action, ip);
+                if (action !== 'OPEN' && action !== 'CHECK') {
+                    db.logAccess(key, action, ip, `plugin:${pluginName} data:${data} device:${deviceId}`, deviceId);
+                }
+            }
+        }
+
+        res.json({ status: 'active', message: 'Valid', days_left: result.daysLeft });
+    } catch (e) {
+        console.error('Verify activity error:', e.message);
+        res.status(500).json({ status: 'error', message: 'Server error' });
+    }
+});
+
+// ============================================================
+// PUBLIC API — Legacy Plugin Tracking (Fallback)
 // ============================================================
 
 app.post('/api/track/plugin', rateLimit(60000, 60), (req, res) => {
