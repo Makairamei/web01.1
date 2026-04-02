@@ -2,15 +2,13 @@ import { useState } from 'react';
 import { get, formatWIB, truncKey, copyText } from '../lib/api';
 import { useApi } from '../hooks/useApi';
 import { Search, ChevronLeft, ChevronRight, RefreshCw, Copy, Download } from 'lucide-react';
-import ActivityDetailDrawer from '../components/ActivityDetailDrawer';
+import { useNavigate } from 'react-router-dom';
 
 export default function PlaybackLogs() {
     const [page, setPage] = useState(1);
     const [search, setSearch] = useState('');
     const [searchInput, setSearchInput] = useState('');
-    const [drawerOpen, setDrawerOpen] = useState(false);
-    const [drawerLicense, setDrawerLicense] = useState(null);
-    const [drawerDevice, setDrawerDevice] = useState(null);
+    const navigate = useNavigate();
 
     const { data, loading, refetch } = useApi(
         `/admin/playback-logs?page=${page}&limit=20&search=${encodeURIComponent(search)}`,
@@ -22,9 +20,7 @@ export default function PlaybackLogs() {
 
     const openDrawer = (log) => {
         if (!log.license_key) return;
-        setDrawerLicense(log.license_key);
-        setDrawerDevice(log.device_id || null);
-        setDrawerOpen(true);
+        navigate(`/licenses?search=${encodeURIComponent(log.license_key)}&openLicense=${encodeURIComponent(log.license_key)}`);
     };
 
     const exportCsv = () => {
@@ -140,13 +136,6 @@ export default function PlaybackLogs() {
                 </div>
             </div>
 
-            {/* Detail Drawer */}
-            <ActivityDetailDrawer
-                isOpen={drawerOpen}
-                onClose={() => setDrawerOpen(false)}
-                licenseKey={drawerLicense}
-                deviceId={drawerDevice}
-            />
         </div>
     );
 }

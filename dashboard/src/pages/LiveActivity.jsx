@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { get, timeAgo, truncKey, copyText } from '../lib/api';
 import { Activity, Radio, Copy, Pause, Play, RefreshCw, Wifi } from 'lucide-react';
-import ActivityDetailDrawer from '../components/ActivityDetailDrawer';
+import { useNavigate } from 'react-router-dom';
 
 const EVENT_TYPES = ['All', 'VALIDATE_OK', 'VALIDATE_FAIL', 'PLUGIN_USE', 'PLAY', 'LOGIN_OK', 'LOGIN_FAIL'];
 
@@ -20,15 +20,11 @@ export default function LiveActivity() {
     const [paused, setPaused] = useState(false);
     const [filter, setFilter] = useState('All');
     const [counter, setCounter] = useState(0);
-    const [drawerOpen, setDrawerOpen] = useState(false);
-    const [drawerLicense, setDrawerLicense] = useState(null);
-    const [drawerDevice, setDrawerDevice] = useState(null);
+    const navigate = useNavigate();
 
     const openDrawer = (ev) => {
         if (!ev.license_key) return;
-        setDrawerLicense(ev.license_key);
-        setDrawerDevice(ev.device_id || null);
-        setDrawerOpen(true);
+        navigate(`/licenses?search=${encodeURIComponent(ev.license_key)}&openLicense=${encodeURIComponent(ev.license_key)}`);
     };
 
     const fetchFeed = useCallback(async () => {
@@ -194,13 +190,6 @@ export default function LiveActivity() {
                 )}
             </div>
 
-            {/* Detail Drawer */}
-            <ActivityDetailDrawer
-                isOpen={drawerOpen}
-                onClose={() => setDrawerOpen(false)}
-                licenseKey={drawerLicense}
-                deviceId={drawerDevice}
-            />
         </div>
     );
 }

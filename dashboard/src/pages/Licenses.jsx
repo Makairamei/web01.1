@@ -59,17 +59,6 @@ export default function Licenses() {
     const counts = data?.counts || {};
     const allSelected = licenses.length > 0 && licenses.every(l => selected.has(l.id));
 
-    /* ─── selection ──────────────────────────────────────── */
-    const toggleAll = () => {
-        if (allSelected) { const s = new Set(selected); licenses.forEach(l => s.delete(l.id)); setSelected(s); }
-        else { const s = new Set(selected); licenses.forEach(l => s.add(l.id)); setSelected(s); }
-    };
-    const toggleOne = (id) => {
-        const s = new Set(selected);
-        s.has(id) ? s.delete(id) : s.add(id);
-        setSelected(s);
-    };
-
     /* ─── drawer ──────────────────────────────────────────── */
     const openDrawer = useCallback(async (lic) => {
         setDrawer(lic);
@@ -81,6 +70,30 @@ export default function Licenses() {
         } catch { toast('Could not load license details', 'error'); }
         finally { setDrawerLoading(false); }
     }, [toast]);
+
+    // Handle auto-open drawer via URL
+    useEffect(() => {
+        const autoOpen = searchParams.get('openLicense');
+        if (autoOpen && !drawerLoading && !drawer) {
+            get(`/admin/licenses/by-key/${encodeURIComponent(autoOpen)}`)
+                .then(res => {
+                    if (res.status === 'ok') openDrawer(res);
+                }).catch(() => {});
+            // remove param to avoid re-trigger
+            setSearchParams(p => { p.delete('openLicense'); return p; }, { replace: true });
+        }
+    }, [searchParams, drawer, drawerLoading, openDrawer, setSearchParams]);
+
+    /* ─── selection ──────────────────────────────────────── */
+    const toggleAll = () => {
+        if (allSelected) { const s = new Set(selected); licenses.forEach(l => s.delete(l.id)); setSelected(s); }
+        else { const s = new Set(selected); licenses.forEach(l => s.add(l.id)); setSelected(s); }
+    };
+    const toggleOne = (id) => {
+        const s = new Set(selected);
+        s.has(id) ? s.delete(id) : s.add(id);
+        setSelected(s);
+    };
 
     /* ─── actions ─────────────────────────────────────────── */
     const doAction = useCallback(async (id, action, successMsg) => {

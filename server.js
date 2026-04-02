@@ -1634,6 +1634,7 @@ app.get('/api/admin/security/blocked-devices', authMiddleware, (req, res) => {
     }
 });
 
+
 app.post('/api/admin/security/block-license', authMiddleware, (req, res) => {
     try {
         const { license_key } = req.body;

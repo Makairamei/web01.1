@@ -10,7 +10,6 @@ import {
     CheckSquare, Square, Check
 } from 'lucide-react';
 import { AreaChart, Area } from 'recharts';
-import LicenseDrawer from '../components/LicenseDrawer';
 import { cleanPluginName } from '../lib/api';
 
 const LIMIT = 10;
@@ -23,10 +22,6 @@ export default function Devices() {
     const [search, setSearch] = useState('');
     const [searchInput, setSearchInput] = useState('');
     const [statusFilter, setStatusFilter] = useState('');
-    const [drawer, setDrawer] = useState(null);
-    const [drawerData, setDrawerData] = useState(null);
-    const [drawerLoading, setDrawerLoading] = useState(false);
-    const [editModal, setEditModal] = useState(null);
     const [confirm, setConfirm] = useState(null);
     const [selected, setSelected] = useState(new Set());
 
@@ -68,27 +63,10 @@ export default function Devices() {
 
     /* ── open license drawer ── */
     const openDrawer = useCallback(async (devOrLic) => {
-        // Since we want to open the *license* detail, and we have device row
-        // we can construct a fake license object or fetch it if needed.
-        // Actually, it's better to fetch by license id directly or let the drawer do it.
-        // The drawer expects a license object with at least id, license_key.
-        const lic = {
-            id: devOrLic.license_id || devOrLic.id,
-            license_key: devOrLic.license_key,
-            name: devOrLic.license_name,
-            status: devOrLic.license_status || 'active',
-            expires_at: devOrLic.expires_at || null
-        };
-
-        setDrawer(lic);
-        setDrawerData(null);
-        setDrawerLoading(true);
-        try {
-            const d = await get(`/admin/licenses/${lic.id}/details`);
-            setDrawerData(d);
-        } catch { toast('Could not load license details', 'error'); }
-        finally { setDrawerLoading(false); }
-    }, [toast]);
+        const key = devOrLic.license_key;
+        if (!key) return;
+        navigate(`/licenses?search=${encodeURIComponent(key)}&openLicense=${encodeURIComponent(key)}`);
+    }, [navigate]);
 
     /* ── actions ── */
     const doAction = useCallback(async (id, action, msg) => {
@@ -96,18 +74,16 @@ export default function Devices() {
             await put(`/admin/devices/${id}`, { action });
             toast(msg, 'success');
             refetch();
-            if (drawer?.id === id) setDrawer(p => ({ ...p, is_blocked: action === 'block' ? 1 : 0 }));
         } catch { toast('Action failed', 'error'); }
-    }, [toast, refetch, drawer]);
+    }, [toast, refetch]);
 
     const doDelete = useCallback(async (id) => {
         try {
             await put(`/admin/devices/${id}`, { action: 'delete' });
             toast('Device removed', 'success');
             refetch();
-            if (drawer?.id === id) setDrawer(null);
         } catch { toast('Delete failed', 'error'); }
-    }, [toast, refetch, drawer]);
+    }, [toast, refetch]);
 
     const handleSearch = (e) => {
         e.preventDefault();
@@ -317,17 +293,6 @@ export default function Devices() {
                     </div>
                 </div>
             </div>
-
-            {/* ══ License Drawer ══ */}
-            <LicenseDrawer
-                drawer={drawer}
-                setDrawer={setDrawer}
-                setConfirm={setConfirm}
-                setEditModal={setEditModal}
-                openDrawer={openDrawer}
-                drawerLoading={drawerLoading}
-                drawerData={drawerData}
-            />
 
             {/* Confirm Modal */}
             <ConfirmModal
