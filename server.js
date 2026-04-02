@@ -1353,7 +1353,9 @@ app.get('/api/admin/activity-feed', authMiddleware, (req, res) => {
         const pluginActivity = db.all(
             `SELECT pu.license_key, pu.device_id, pu.plugin_name, pu.action, pu.ip_address, pu.used_at,
                     l.name as license_name,
-                    COALESCE(d.device_name, '') as device_name
+                    COALESCE(d.device_name, '') as device_name,
+                    COALESCE(d.device_alias, '') as device_alias,
+                    d.id as device_db_id
              FROM plugin_usage pu
              LEFT JOIN licenses l ON pu.license_key = l.license_key
              LEFT JOIN devices d ON pu.license_key = d.license_key AND pu.device_id = d.device_id
@@ -1365,7 +1367,9 @@ app.get('/api/admin/activity-feed', authMiddleware, (req, res) => {
             `SELECT pl.license_key, pl.device_id, pl.plugin_name, pl.video_title, pl.source_provider, 
                     pl.ip_address, pl.played_at,
                     l.name as license_name,
-                    COALESCE(d.device_name, '') as device_name
+                    COALESCE(d.device_name, '') as device_name,
+                    COALESCE(d.device_alias, '') as device_alias,
+                    d.id as device_db_id
              FROM playback_logs pl
              LEFT JOIN licenses l ON pl.license_key = l.license_key
              LEFT JOIN devices d ON pl.license_key = d.license_key AND pl.device_id = d.device_id
@@ -1373,10 +1377,18 @@ app.get('/api/admin/activity-feed', authMiddleware, (req, res) => {
              ORDER BY pl.played_at DESC LIMIT ?`, [limit]
         );
 
+        // Helper to build display name
+        const displayName = (row) => {
+            if (row.device_alias && row.device_alias.trim()) {
+                return `${row.device_name || 'Unknown'} (${row.device_alias.trim()})`;
+            }
+            return row.device_name || '';
+        };
+
         // Merge and sort by time
         const feed = [
-            ...pluginActivity.map(a => ({ ...a, type: 'plugin', timestamp: a.used_at })),
-            ...playbackActivity.map(a => ({ ...a, type: 'playback', timestamp: a.played_at }))
+            ...pluginActivity.map(a => ({ ...a, type: 'plugin', timestamp: a.used_at, display_name: displayName(a) })),
+            ...playbackActivity.map(a => ({ ...a, type: 'playback', timestamp: a.played_at, display_name: displayName(a) }))
         ].sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp)).slice(0, limit);
 
         res.json({ status: 'ok', feed, count: feed.length });

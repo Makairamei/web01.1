@@ -117,6 +117,8 @@ async function initDatabase() {
     )`);
     // Migration: add first_seen_action to existing tables
     try { db.run(`ALTER TABLE devices ADD COLUMN first_seen_action TEXT DEFAULT 'UNKNOWN'`); } catch (_) { }
+    // Migration: add device_alias (custom name set by admin) to existing tables
+    try { db.run(`ALTER TABLE devices ADD COLUMN device_alias TEXT DEFAULT ''`); } catch (_) { }
 
     // Device tokens: each slot gets a unique URL token
     // URL format: /r/{license_key}/{token}/repo.json
@@ -423,13 +425,19 @@ function getLicenseDetails(id) {
 
     const devices = all(`SELECT *, CASE WHEN last_seen > datetime('now', '-30 minutes') THEN 1 ELSE 0 END as is_online
         FROM devices WHERE license_key = ? ORDER BY last_seen DESC`, [lic.license_key]);
-    const recentLogs = all(`SELECT al.*, d.device_name FROM access_logs al
+    // Compute display_name for each device
+    devices.forEach(d => {
+        d.display_name = (d.device_alias && d.device_alias.trim())
+            ? `${d.device_name || 'Unknown'} (${d.device_alias.trim()})`
+            : (d.device_name || 'Unknown Device');
+    });
+    const recentLogs = all(`SELECT al.*, d.device_name, d.device_alias FROM access_logs al
         LEFT JOIN devices d ON al.license_key = d.license_key AND al.device_id = d.device_id
         WHERE al.license_key = ? ORDER BY al.created_at DESC LIMIT 100`, [lic.license_key]);
-    const pluginUsage = all(`SELECT pu.*, d.device_name FROM plugin_usage pu
+    const pluginUsage = all(`SELECT pu.*, d.device_name, d.device_alias FROM plugin_usage pu
         LEFT JOIN devices d ON pu.license_key = d.license_key AND pu.device_id = d.device_id
         WHERE pu.license_key = ? ORDER BY pu.used_at DESC LIMIT 200`, [lic.license_key]);
-    const playbackLogs = all(`SELECT pl.*, d.device_name FROM playback_logs pl
+    const playbackLogs = all(`SELECT pl.*, d.device_name, d.device_alias FROM playback_logs pl
         LEFT JOIN devices d ON pl.license_key = d.license_key AND pl.device_id = d.device_id
         WHERE pl.license_key = ? ORDER BY pl.played_at DESC LIMIT 200`, [lic.license_key]);
     return { ...lic, devices, recentLogs, pluginUsage, playbackLogs };
@@ -593,7 +601,15 @@ function deleteDevice(id) {
 }
 
 function renameDevice(id, name) {
-    run('UPDATE devices SET device_name = ? WHERE id = ?', [name, id]);
+    run('UPDATE devices SET device_alias = ? WHERE id = ?', [name, id]);
+}
+
+function getDeviceDisplayName(device) {
+    // Returns alias if set, falls back to hardware name
+    if (device.device_alias && device.device_alias.trim()) {
+        return `${device.device_name || 'Unknown'} (${device.device_alias.trim()})`;
+    }
+    return device.device_name || 'Unknown Device';
 }
 
 // Replace a temporary IP-based device with the real Android device ID.
@@ -709,14 +725,20 @@ function getPlaybackLogsPaginated(page = 1, limit = 50, search = '') {
     let where = '';
     let params = [];
     if (search) {
-        where = 'WHERE (pl.video_title LIKE ? OR pl.plugin_name LIKE ? OR pl.source_provider LIKE ? OR pl.license_key LIKE ? OR d.device_name LIKE ?)';
-        params = [`%${search}%`, `%${search}%`, `%${search}%`, `%${search}%`, `%${search}%`];
+        where = 'WHERE (pl.video_title LIKE ? OR pl.plugin_name LIKE ? OR pl.source_provider LIKE ? OR pl.license_key LIKE ? OR d.device_name LIKE ? OR d.device_alias LIKE ?)';
+        params = [`%${search}%`, `%${search}%`, `%${search}%`, `%${search}%`, `%${search}%`, `%${search}%`];
     }
     const total = get(`SELECT COUNT(*) as c FROM playback_logs pl LEFT JOIN devices d ON pl.license_key = d.license_key AND pl.device_id = d.device_id ${where}`, params);
-    const rows = all(`SELECT pl.*, d.device_name, l.name as license_name FROM playback_logs pl
+    const rows = all(`SELECT pl.*, d.device_name, d.device_alias, l.name as license_name FROM playback_logs pl
         LEFT JOIN devices d ON pl.license_key = d.license_key AND pl.device_id = d.device_id
         LEFT JOIN licenses l ON pl.license_key = l.license_key
         ${where} ORDER BY pl.played_at DESC LIMIT ? OFFSET ?`, [...params, limit, offset]);
+    // Compute display_name
+    rows.forEach(r => {
+        r.display_name = (r.device_alias && r.device_alias.trim())
+            ? `${r.device_name || 'Unknown'} (${r.device_alias.trim()})`
+            : (r.device_name || '');
+    });
     return { logs: rows, total: total?.c || 0, page, limit };
 }
 

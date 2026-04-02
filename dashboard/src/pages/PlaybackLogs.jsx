@@ -1,8 +1,8 @@
 import { useState } from 'react';
 import { get, formatWIB, truncKey, copyText } from '../lib/api';
 import { useApi } from '../hooks/useApi';
-import { Search, ChevronLeft, ChevronRight, RefreshCw, Copy, Download, Eye } from 'lucide-react';
-import LicenseDrawer from '../components/LicenseDrawer';
+import { Search, ChevronLeft, ChevronRight, RefreshCw, Copy, Download } from 'lucide-react';
+import ActivityDetailDrawer from '../components/ActivityDetailDrawer';
 
 export default function PlaybackLogs() {
     const [page, setPage] = useState(1);
@@ -10,6 +10,7 @@ export default function PlaybackLogs() {
     const [searchInput, setSearchInput] = useState('');
     const [drawerOpen, setDrawerOpen] = useState(false);
     const [drawerLicense, setDrawerLicense] = useState(null);
+    const [drawerDevice, setDrawerDevice] = useState(null);
 
     const { data, loading, refetch } = useApi(
         `/admin/playback-logs?page=${page}&limit=20&search=${encodeURIComponent(search)}`,
@@ -21,7 +22,8 @@ export default function PlaybackLogs() {
 
     const openDrawer = (log) => {
         if (!log.license_key) return;
-        setDrawerLicense({ license_key: log.license_key });
+        setDrawerLicense(log.license_key);
+        setDrawerDevice(log.device_id || null);
         setDrawerOpen(true);
     };
 
@@ -44,7 +46,7 @@ export default function PlaybackLogs() {
                             value={searchInput}
                             onChange={e => setSearchInput(e.target.value)}
                             onKeyDown={e => { if (e.key === 'Enter') { setSearch(searchInput); setPage(1); } }}
-                            placeholder="Search plugin, license, title…"
+                            placeholder="Search plugin, license, title, device…"
                             className="form-input pl-8 w-64"
                         />
                     </div>
@@ -79,41 +81,50 @@ export default function PlaybackLogs() {
                                 ))
                             ) : logs.length === 0 ? (
                                 <tr><td colSpan={6} className="text-center py-12 text-[13px] text-slate-400">No playback logs found</td></tr>
-                            ) : logs.map((l, i) => (
-                                <tr key={i}>
-                                    <td>
-                                        <div className="flex flex-col">
-                                            <button onClick={() => openDrawer(l)} className="text-[12px] font-semibold text-slate-800 dark:text-slate-200 hover:text-indigo-600 hover:underline text-left">
-                                                {l.license_name || 'Unnamed License'}
-                                            </button>
-                                            <button onClick={() => copyText(l.license_key)} className="flex items-center gap-1 font-mono text-[11px] text-indigo-600 dark:text-indigo-400 hover:underline w-fit">
-                                                {truncKey(l.license_key)} <Copy className="w-3 h-3 opacity-40" />
-                                            </button>
-                                        </div>
-                                    </td>
-                                    <td className="text-[12px] text-slate-600 dark:text-slate-400">
-                                        {l.ip_address || l.device_name || l.device_id ? (
-                                            <div className="flex flex-col gap-0.5">
-                                                <button onClick={() => openDrawer(l)} className="font-medium text-[11px] text-slate-700 dark:text-slate-300 hover:text-indigo-600 hover:underline text-left">
-                                                    {l.device_name || 'Unknown Device'}
+                            ) : logs.map((l, i) => {
+                                // display_name is alias-aware from server
+                                const devDisplay = l.display_name || l.device_name || '';
+                                return (
+                                    <tr key={i}>
+                                        <td>
+                                            <div className="flex flex-col">
+                                                <button onClick={() => openDrawer(l)} className="text-[12px] font-semibold text-slate-800 dark:text-slate-200 hover:text-indigo-600 hover:underline text-left">
+                                                    {l.license_name || 'Unnamed License'}
                                                 </button>
+                                                <button onClick={() => copyText(l.license_key)} className="flex items-center gap-1 font-mono text-[11px] text-indigo-600 dark:text-indigo-400 hover:underline w-fit">
+                                                    {truncKey(l.license_key)} <Copy className="w-3 h-3 opacity-40" />
+                                                </button>
+                                            </div>
+                                        </td>
+                                        <td className="text-[12px] text-slate-600 dark:text-slate-400">
+                                            <div className="flex flex-col gap-0.5">
+                                                {devDisplay ? (
+                                                    <button
+                                                        onClick={() => openDrawer(l)}
+                                                        className="font-medium text-[11px] text-slate-700 dark:text-slate-300 hover:text-indigo-600 hover:underline text-left"
+                                                    >
+                                                        {devDisplay}
+                                                    </button>
+                                                ) : (
+                                                    <span className="font-medium text-[11px] text-slate-400">Unknown Device</span>
+                                                )}
                                                 <span className="font-mono text-[10px] text-slate-500">
                                                     {l.ip_address || '—'}
                                                 </span>
                                                 {l.device_id && (
                                                     <span className="font-mono text-[9px] text-slate-400/80" title="Raw Device ID">
-                                                        ID: {l.device_id.length > 15 ? l.device_id.substring(0, 15) + '…' : l.device_id}
+                                                        ID: {l.device_id.length > 12 ? l.device_id.substring(0, 12) + '…' : l.device_id}
                                                     </span>
                                                 )}
                                             </div>
-                                        ) : '—'}
-                                    </td>
-                                    <td className="font-medium text-[13px]">{l.plugin_name || '—'}</td>
-                                    <td className="text-[12px] text-slate-600 dark:text-slate-400 max-w-[180px] truncate">{l.video_title || '—'}</td>
-                                    <td className="text-[12px] text-slate-500">{l.source || l.video_url?.split('/')?.[2] || '—'}</td>
-                                    <td className="text-[11px] text-slate-400 whitespace-nowrap">{formatWIB(l.created_at)}</td>
-                                </tr>
-                            ))}
+                                        </td>
+                                        <td className="font-medium text-[13px]">{l.plugin_name || '—'}</td>
+                                        <td className="text-[12px] text-slate-600 dark:text-slate-400 max-w-[180px] truncate">{l.video_title || '—'}</td>
+                                        <td className="text-[12px] text-slate-500">{l.source_provider || l.video_url?.split('/')?.[2] || '—'}</td>
+                                        <td className="text-[11px] text-slate-400 whitespace-nowrap">{formatWIB(l.played_at)}</td>
+                                    </tr>
+                                );
+                            })}
                         </tbody>
                     </table>
                 </div>
@@ -129,11 +140,12 @@ export default function PlaybackLogs() {
                 </div>
             </div>
 
-            {/* Slide-out Drawer */}
-            <LicenseDrawer
+            {/* Detail Drawer */}
+            <ActivityDetailDrawer
                 isOpen={drawerOpen}
                 onClose={() => setDrawerOpen(false)}
-                license={drawerLicense}
+                licenseKey={drawerLicense}
+                deviceId={drawerDevice}
             />
         </div>
     );

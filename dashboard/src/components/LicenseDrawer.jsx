@@ -110,8 +110,13 @@ export default function LicenseDrawer({ drawer, setDrawer, setConfirm, setEditMo
                                                 </div>
                                                 <div>
                                                     <div className="text-[13px] font-semibold text-slate-800 dark:text-slate-200">
-                                                        {d.device_name || `Device ${i + 1}`}
+                                                        {d.display_name || d.device_name || `Device ${i + 1}`}
                                                     </div>
+                                                    {d.device_alias && d.device_alias.trim() && (
+                                                        <div className="text-[10px] text-indigo-500 dark:text-indigo-400 font-medium">
+                                                            alias: {d.device_alias}
+                                                        </div>
+                                                    )}
                                                     <div className="text-[10px] font-mono text-slate-400 mt-0.5">{d.device_id?.substring(0, 20)}…</div>
                                                 </div>
                                             </div>
