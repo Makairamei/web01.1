@@ -1,5 +1,5 @@
 import { useState, useCallback, Fragment } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { get, put, del, formatWIB } from '../lib/api';
 import { useApi } from '../hooks/useApi';
 import { useToast } from '../components/Toast';
@@ -18,10 +18,11 @@ const LIMIT = 10;
 export default function Devices() {
     const toast = useToast();
     const navigate = useNavigate();
+    const [searchParams] = useSearchParams();
     const [page, setPage] = useState(1);
-    const [search, setSearch] = useState('');
-    const [searchInput, setSearchInput] = useState('');
-    const [statusFilter, setStatusFilter] = useState('');
+    const [search, setSearch] = useState(() => searchParams.get('search') || '');
+    const [searchInput, setSearchInput] = useState(() => searchParams.get('search') || '');
+    const [statusFilter, setStatusFilter] = useState(() => searchParams.get('status') || '');
     const [confirm, setConfirm] = useState(null);
     const [selected, setSelected] = useState(new Set());
 

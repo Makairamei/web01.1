@@ -1237,14 +1237,16 @@ function getUnreadAlertCount() {
 // ============================================================
 
 function getAnalyticsData(period = 'week') {
-    // Build time filter based on period
     let timeFilter;
     if (period === 'today') {
         timeFilter = "datetime('now', '-1 day')";
     } else if (period === 'month') {
         timeFilter = "datetime('now', '-30 days')";
+    } else if (period === 'year') {
+        timeFilter = "datetime('now', '-365 days')";
+    } else if (period === 'all') {
+        timeFilter = "datetime('now', '-10 years')";
     } else {
-        // default: week
         timeFilter = "datetime('now', '-7 days')";
     }
 
@@ -1255,15 +1257,14 @@ function getAnalyticsData(period = 'week') {
     const revokedLicenses = get("SELECT COUNT(*) as c FROM licenses WHERE status = 'revoked' AND deleted_at IS NULL")?.c || 0;
     const expiringSoon = get("SELECT COUNT(*) as c FROM licenses WHERE status = 'active' AND expires_at > datetime('now') AND expires_at <= datetime('now', '+7 days') AND deleted_at IS NULL")?.c || 0;
 
-    // Trial = licenses with max_devices=1 and short duration (created within last 30 days, expires within 7 days of creation)
+    // Trial = licenses with max_devices=1 and short duration (expires within 7 days of creation)
     const trialLicenses = get(`SELECT COUNT(*) as c FROM licenses 
         WHERE max_devices = 1 AND deleted_at IS NULL 
         AND CAST((julianday(expires_at) - julianday(created_at)) AS INTEGER) <= 7`)?.c || 0;
 
-    // Renewal rate = licenses that were expired then re-activated vs total expired
-    const totalEverExpired = get("SELECT COUNT(*) as c FROM licenses WHERE (status = 'expired' OR expires_at <= datetime('now')) AND deleted_at IS NULL")?.c || 0;
-    const renewedLicenses = get("SELECT COUNT(*) as c FROM access_logs WHERE action = 'LICENSE_ACTIVATE' AND created_at > datetime('now', '-90 days')")?.c || 0;
-    const licenseRenewalRate = totalEverExpired > 0 ? Math.round((renewedLicenses / totalEverExpired) * 100) : 0;
+    // Renewal rate = active licenses vs total licenses (simple calculation)
+    const licenseRenewalRate = totalLicenses > 0
+        ? Math.round((activeLicenses / totalLicenses) * 100) : 0;
 
     // ── DEVICE ANALYTICS ──────────────────────────────
     const totalDevices = get("SELECT COUNT(*) as c FROM devices")?.c || 0;
@@ -1383,8 +1384,11 @@ function getAnalyticsData(period = 'week') {
         ORDER BY device_count DESC LIMIT 10`);
 
     // ── CHART DATA ──────────────────────────────────────
-    // Daily trend for chart period
-    const chartDays = period === 'today' ? 1 : (period === 'month' ? 30 : 7);
+    const chartDays = period === 'today' ? 1 
+        : period === 'month' ? 30 
+        : period === 'year' ? 365 
+        : period === 'all' ? 3650
+        : 7;
 
     const dailyValidations = all(`
         SELECT date(used_at) as day, COUNT(*) as count

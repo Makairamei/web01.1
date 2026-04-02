@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { get, timeAgo, truncKey, copyText } from '../lib/api';
-import { Activity, Radio, Copy, Pause, Play, RefreshCw, Wifi } from 'lucide-react';
-import { useNavigate } from 'react-router-dom';
+import { Activity, Radio, Copy, Pause, Play, RefreshCw, Wifi, Search } from 'lucide-react';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 
 const EVENT_TYPES = ['All', 'VALIDATE_OK', 'VALIDATE_FAIL', 'PLUGIN_USE', 'PLAY', 'LOGIN_OK', 'LOGIN_FAIL'];
 
@@ -15,10 +15,12 @@ const EVENT_COLORS = {
 };
 
 export default function LiveActivity() {
+    const [searchParams] = useSearchParams();
     const [events, setEvents] = useState([]);
     const [loading, setLoading] = useState(true);
     const [paused, setPaused] = useState(false);
-    const [filter, setFilter] = useState('All');
+    const [filter, setFilter] = useState(() => searchParams.get('filter') || 'All');
+    const [search, setSearch] = useState(() => searchParams.get('search') || '');
     const [counter, setCounter] = useState(0);
     const navigate = useNavigate();
 
@@ -53,8 +55,17 @@ export default function LiveActivity() {
     }, [fetchFeed]);
 
     const filtered = events.filter(e => {
-        if (filter === 'All') return true;
-        return (e.action || '').toUpperCase().includes(filter.replace('_', ''));
+        // filter by type
+        if (filter !== 'All' && !(e.action || '').toUpperCase().includes(filter.replace('_', ''))) return false;
+        
+        // filter by search term
+        if (search) {
+            const term = search.toLowerCase();
+            const dev = (e.display_name || e.device_name || e.device_id || '').toLowerCase();
+            const lic = (e.license_key || e.license_name || '').toLowerCase();
+            return dev.includes(term) || lic.includes(term);
+        }
+        return true;
     });
 
     const getColor = (action) => {
@@ -69,12 +80,24 @@ export default function LiveActivity() {
         <div className="space-y-4">
             {/* Header bar */}
             <div className="flex items-center justify-between flex-wrap gap-3">
-                <div className="flex items-center gap-3">
-                    <div className="flex items-center gap-2">
-                        <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 pulse-dot" />
-                        <span className="text-[13px] font-semibold text-slate-700 dark:text-slate-300">Live Feed</span>
+                <div className="flex items-center gap-4">
+                    <div className="flex items-center gap-3">
+                        <div className="flex items-center gap-2">
+                            <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 pulse-dot" />
+                            <span className="text-[13px] font-semibold text-slate-700 dark:text-slate-300">Live Feed</span>
+                        </div>
+                        <span className="badge badge-info">{counter} / min</span>
                     </div>
-                    <span className="badge badge-info">{counter} / min</span>
+                    
+                    <div className="relative">
+                        <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-slate-400" />
+                        <input
+                            value={search}
+                            onChange={(e) => setSearch(e.target.value)}
+                            placeholder="Search…"
+                            className="form-input pl-8 py-1 h-8 text-[12px] w-48"
+                        />
+                    </div>
                 </div>
                 <div className="flex items-center gap-2">
                     <div className="flex items-center gap-1.5 overflow-x-auto custom-scroll pb-1">

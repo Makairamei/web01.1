@@ -27,7 +27,7 @@ export default function Licenses() {
     const [page, setPage] = useState(1);
     const [search, setSearch] = useState(() => searchParams.get('search') || '');
     const [searchInput, setSearchInput] = useState(() => searchParams.get('search') || '');
-    const [statusFilter, setStatus] = useState('');
+    const [statusFilter, setStatus] = useState(() => searchParams.get('status') || '');
     const [dateRange, setDateRange] = useState('');
     const [selected, setSelected] = useState(new Set());
     const [drawer, setDrawer] = useState(null);    // license obj for detail view

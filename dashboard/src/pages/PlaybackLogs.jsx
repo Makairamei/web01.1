@@ -2,17 +2,30 @@ import { useState } from 'react';
 import { get, formatWIB, truncKey, copyText } from '../lib/api';
 import { useApi } from '../hooks/useApi';
 import { Search, ChevronLeft, ChevronRight, RefreshCw, Copy, Download } from 'lucide-react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 
 export default function PlaybackLogs() {
+    const [searchParams] = useSearchParams();
     const [page, setPage] = useState(1);
-    const [search, setSearch] = useState('');
-    const [searchInput, setSearchInput] = useState('');
+    const [search, setSearch] = useState(() => searchParams.get('search') || '');
+    const [searchInput, setSearchInput] = useState(() => searchParams.get('search') || '');
+    const [dateRange, setDateRange] = useState('');
     const navigate = useNavigate();
 
+    // Compute date_from ISO string from dateRange
+    const dateFrom = (() => {
+        if (!dateRange) return '';
+        const now = new Date();
+        if (dateRange === '7d') return new Date(now - 7 * 86400000).toISOString();
+        if (dateRange === '30d') return new Date(now - 30 * 86400000).toISOString();
+        if (dateRange === '90d') return new Date(now - 90 * 86400000).toISOString();
+        if (dateRange === 'year') return new Date(now.getFullYear(), 0, 1).toISOString();
+        return '';
+    })();
+
     const { data, loading, refetch } = useApi(
-        `/admin/playback-logs?page=${page}&limit=20&search=${encodeURIComponent(search)}`,
-        [page, search]
+        `/admin/playback-logs?page=${page}&limit=20&search=${encodeURIComponent(search)}&date_from=${encodeURIComponent(dateFrom)}`,
+        [page, search, dateFrom]
     );
     const logs = data?.logs || [];
     const total = data?.total || 0;
@@ -46,6 +59,13 @@ export default function PlaybackLogs() {
                             className="form-input pl-8 w-64"
                         />
                     </div>
+                    <select value={dateRange} onChange={e => { setDateRange(e.target.value); setPage(1); }} className="form-select text-[12px] h-9">
+                        <option value="">All Time</option>
+                        <option value="7d">Last 7 Days</option>
+                        <option value="30d">Last 30 Days</option>
+                        <option value="90d">Last 90 Days</option>
+                        <option value="year">This Year</option>
+                    </select>
                     <button onClick={refetch} className="p-2 rounded-xl hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-400"><RefreshCw className="w-3.5 h-3.5" /></button>
                 </div>
                 <div className="flex items-center gap-2">
