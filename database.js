@@ -526,6 +526,13 @@ function getDevicesPaginated(page = 1, limit = 20, search = '', status = '') {
         FROM devices d LEFT JOIN licenses l ON d.license_key = l.license_key ${where} ORDER BY l.id DESC, d.last_seen DESC LIMIT ? OFFSET ?`, [...params, limit, offset]);
 
     if (rows.length > 0) {
+        // Compute display_name for each device
+        rows.forEach(r => {
+            r.display_name = (r.device_alias && r.device_alias.trim())
+                ? `${r.device_name || 'Unknown'} (${r.device_alias.trim()})`
+                : (r.device_name || '');
+        });
+
         const deviceIds = rows.map(r => r.device_id).filter(Boolean);
         if (deviceIds.length > 0) {
             const placeholders = deviceIds.map(() => '?').join(',');

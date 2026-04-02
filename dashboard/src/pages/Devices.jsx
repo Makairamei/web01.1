@@ -246,7 +246,7 @@ export default function Devices() {
                                             <td>
                                                 <div className="flex flex-col gap-0.5">
                                                     <button onClick={() => openDrawer(d)} className="text-[13px] font-semibold text-slate-800 dark:text-slate-200 hover:text-indigo-600 hover:underline text-left">
-                                                        {d.device_name || 'Unnamed Device'}
+                                                        {d.display_name || d.device_name || 'Unnamed Device'}
                                                     </button>
                                                     <span className="font-mono text-[10px] text-slate-400">{d.device_id?.substring(0, 18)}…</span>
                                                 </div>

@@ -55,6 +55,7 @@ app.use((req, res, next) => {
 });
 // === END DEBUG LOGGER ===
 
+// Ensure we don't aggressively cache index.html
 app.use(express.static(path.join(__dirname, 'public'), {
     setHeaders: (res, pathStr) => {
         if (pathStr.endsWith('.html')) {

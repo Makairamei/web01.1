@@ -267,7 +267,9 @@ export default function Licenses() {
                                         {/* Name above key */}
                                         <div className="flex flex-col gap-0.5">
                                             {l.name && (
-                                                <span className="text-[12px] font-semibold text-slate-800 dark:text-slate-200 leading-tight">{l.name}</span>
+                                                <button onClick={() => openDrawer(l)} className="text-[12px] font-semibold text-slate-800 dark:text-slate-200 hover:text-indigo-600 hover:underline text-left leading-tight">
+                                                    {l.name}
+                                                </button>
                                             )}
                                             <button
                                                 onClick={() => copyText(getRepoUrl(l.license_key))}
