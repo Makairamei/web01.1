@@ -737,7 +737,7 @@ app.get('/r/:key/:token/plugins.json', rateLimit(60000, 60), async (req, res) =>
         }
 
         if (!Array.isArray(upstreamUrls) || upstreamUrls.length === 0) {
-            upstreamUrls = [{ url: 'https://raw.githubusercontent.com/Makairamei/CS/builds/plugins.json', active: true }];
+            upstreamUrls = [{ url: 'https://raw.githubusercontent.com/Makairamei/CS01.1/builds/plugins.json', active: true }];
         }
 
         const fetchPromises = upstreamUrls
@@ -799,7 +799,7 @@ app.get('/r/:key/plugins.json', rateLimit(60000, 60), async (req, res) => {
 
         if (!Array.isArray(upstreamUrls) || upstreamUrls.length === 0) {
             // Default fallback
-            upstreamUrls = [{ url: 'https://raw.githubusercontent.com/Makairamei/CS/builds/plugins.json', active: true }];
+            upstreamUrls = [{ url: 'https://raw.githubusercontent.com/Makairamei/CS01.1/builds/plugins.json', active: true }];
         }
 
         // Fetch all active upstreams in parallel
