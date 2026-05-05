@@ -13,6 +13,7 @@ const path = require('path');
 const os = require('os');
 const cookieParser = require('cookie-parser');
 const db = require('./database');
+const SELECTOR_CONFIG = require('./selector_config');
 
 // ============================================================
 // CONFIGURATION
@@ -854,8 +855,132 @@ app.post('/api/admin/test-repo', authMiddleware, async (req, res) => {
 });
 
 // ============================================================
+// PUBLIC API — Plugin Selectors (Hybrid Security Layer)
+// Returns CSS selectors / secret keys ONLY if license is valid.
+// This is the core of the anti-bypass protection:
+// Even if someone removes requireLicense() from the plugin,
+// they still cannot scrape videos without these selectors.
+// ============================================================
+
+app.post('/api/selectors', rateLimit(60000, 20), (req, res) => {
+    try {
+        const key = cleanInput(req.body.key);
+        const deviceId = cleanInput(req.body.device_id);
+        const pluginName = cleanInput(req.body.plugin_name);
+        const ip = getClientIP(req);
+
+        if (!deviceId || deviceId.toLowerCase() === 'unknown') {
+            return res.json({ status: 'error', message: 'Device ID tidak valid.' });
+        }
+        if (!key) {
+            return res.json({ status: 'error', message: 'Lisensi tidak ditemukan.' });
+        }
+        if (!pluginName) {
+            return res.json({ status: 'error', message: 'Plugin name required.' });
+        }
+
+        // Full license validation
+        const result = db.validateLicense(key, ip, deviceId, 'Android', 'SELECTOR_REQUEST');
+        if (!result.valid) {
+            const msgs = {
+                not_found: 'Lisensi tidak ditemukan',
+                revoked: 'Lisensi telah dicabut',
+                expired: 'Lisensi telah kadaluarsa',
+                max_devices: 'Batas perangkat tercapai',
+                device_blocked: 'Perangkat diblokir'
+            };
+            db.logAccess(key, 'SELECTOR_DENIED', ip, `plugin:${pluginName} reason:${result.reason}`, deviceId);
+            return res.json({ status: 'error', message: msgs[result.reason] || 'Akses ditolak', reason: result.reason });
+        }
+
+        // Get selector config for this plugin
+        const config = SELECTOR_CONFIG[pluginName];
+        if (!config || config.type === 'api_secret') {
+            // api_secret plugins use /api/secret endpoint instead
+            return res.json({ status: 'error', message: 'Plugin tidak mendukung selector mode.' });
+        }
+
+        db.logAccess(key, 'SELECTOR_OK', ip, `plugin:${pluginName} device:${deviceId}`, deviceId);
+
+        // Return selectors — without the secret keys
+        const { secret_key_default, secret_key_alt, ...safeConfig } = config;
+        res.json({
+            status: 'ok',
+            plugin: pluginName,
+            selectors: safeConfig,
+            // Session token expires in 5 minutes (for replay protection)
+            session_token: crypto.randomBytes(16).toString('hex'),
+            expires_at: Date.now() + 5 * 60 * 1000
+        });
+
+    } catch (e) {
+        console.error('Selectors API error:', e.message);
+        res.status(500).json({ status: 'error', message: 'Server error' });
+    }
+});
+
+// ============================================================
+// PUBLIC API — Secret Key (for API-based plugins like MovieBox)
+// Returns HMAC secret keys ONLY if license is valid.
+// MovieBox uses these keys to generate request signatures.
+// ============================================================
+
+app.post('/api/secret', rateLimit(60000, 10), (req, res) => {
+    try {
+        const key = cleanInput(req.body.key);
+        const deviceId = cleanInput(req.body.device_id);
+        const pluginName = cleanInput(req.body.plugin_name);
+        const ip = getClientIP(req);
+
+        if (!deviceId || deviceId.toLowerCase() === 'unknown') {
+            return res.json({ status: 'error', message: 'Device ID tidak valid.' });
+        }
+        if (!key) {
+            return res.json({ status: 'error', message: 'Lisensi tidak ditemukan.' });
+        }
+
+        // Full license validation (strict)
+        const result = db.validateLicense(key, ip, deviceId, 'Android', 'SECRET_REQUEST');
+        if (!result.valid) {
+            const msgs = {
+                not_found: 'Lisensi tidak ditemukan',
+                revoked: 'Lisensi telah dicabut',
+                expired: 'Lisensi telah kadaluarsa',
+                max_devices: 'Batas perangkat tercapai',
+                device_blocked: 'Perangkat diblokir'
+            };
+            db.logAccess(key, 'SECRET_DENIED', ip, `plugin:${pluginName} reason:${result.reason}`, deviceId);
+            return res.json({ status: 'error', message: msgs[result.reason] || 'Akses ditolak' });
+        }
+
+        // Get config for this plugin
+        const config = SELECTOR_CONFIG[pluginName];
+        if (!config || config.type !== 'api_secret') {
+            return res.json({ status: 'error', message: 'Plugin tidak mendukung secret mode.' });
+        }
+
+        db.logAccess(key, 'SECRET_OK', ip, `plugin:${pluginName} device:${deviceId}`, deviceId);
+
+        res.json({
+            status: 'ok',
+            plugin: pluginName,
+            k1: config.secret_key_default,
+            k2: config.secret_key_alt,
+            // Expires in 5 minutes to prevent replay attacks
+            expires_at: Date.now() + 5 * 60 * 1000,
+            session_token: crypto.randomBytes(16).toString('hex')
+        });
+
+    } catch (e) {
+        console.error('Secret API error:', e.message);
+        res.status(500).json({ status: 'error', message: 'Server error' });
+    }
+});
+
+// ============================================================
 // ADMIN AUTH
 // ============================================================
+
 
 app.post('/api/auth/login', rateLimit(300000, 20), (req, res) => {
     try {
