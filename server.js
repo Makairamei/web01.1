@@ -216,6 +216,36 @@ function pluginSessionMiddleware(req, res, next) {
     }
 }
 
+function requireActivePluginSession(req, res) {
+    const session = req.pluginSession || {};
+    const licenseKey = cleanInput(session.license_key || '');
+    const deviceId = cleanInput(session.device_id || '');
+    const pluginName = safeDecodePlugin(session.plugin_name || req.body?.plugin_name || req.query?.plugin_name || '');
+
+    if (!licenseKey || !deviceId || !pluginName) {
+        return { ok: false, statusCode: 401, error: { status: 'error', message: 'Invalid plugin session' } };
+    }
+
+    const result = db.validateLicense(licenseKey, getClientIP(req), deviceId, 'Android Device', 'PLUGIN_SESSION');
+    if (!result.valid) {
+        const messages = {
+            not_found: 'Lisensi tidak ditemukan',
+            revoked: 'Lisensi telah dicabut oleh admin',
+            expired: 'Lisensi telah kadaluarsa',
+            max_devices: 'Batas perangkat maksimal tercapai',
+            device_blocked: 'Perangkat ini diblokir'
+        };
+        db.logAccess(licenseKey, 'PLUGIN_SESSION_FAIL', getClientIP(req), `reason:${result.reason} plugin:${pluginName}`, deviceId);
+        return {
+            ok: false,
+            statusCode: 403,
+            error: { status: 'error', message: messages[result.reason] || 'Akses ditolak', reason: result.reason }
+        };
+    }
+
+    return { ok: true, licenseKey, deviceId, pluginName, result };
+}
+
 function getSafeDeviceId(req, rawDeviceId) {
     const deviceId = cleanInput(rawDeviceId);
     if (deviceId && deviceId.toLowerCase() !== 'unknown' && deviceId.toLowerCase() !== 'null') {
@@ -917,23 +947,25 @@ app.post('/api/admin/test-repo', authMiddleware, async (req, res) => {
 
 app.post('/api/selectors', pluginSessionMiddleware, (req, res) => {
     try {
-        const pluginName = safeDecodePlugin(req.pluginSession?.plugin_name || req.body.plugin_name || '');
-        const config = SELECTOR_CONFIG[pluginName];
-        
-        if (config && config.type !== 'api_secret') {
-            const { secret_key_default, secret_key_alt, ...safeConfig } = config;
-            return res.json({
-                status: 'ok',
-                plugin: pluginName,
-                selectors: safeConfig,
-                session_token: 'bypassed_token',
-                expires_at: Date.now() + 24 * 60 * 60 * 1000
-            });
+        const active = requireActivePluginSession(req, res);
+        if (!active.ok) return res.status(active.statusCode).json(active.error);
+
+        const config = SELECTOR_CONFIG[active.pluginName];
+        if (!config || config.type === 'api_secret') {
+            return res.status(404).json({ status: 'error', message: 'Selector config not found' });
         }
-        
-        res.json({ status: 'ok', message: 'Bypassed' });
+
+        const { secret_key_default, secret_key_alt, ...safeConfig } = config;
+        db.logAccess(active.licenseKey, 'SELECTORS_OK', getClientIP(req), `plugin:${active.pluginName}`, active.deviceId);
+        return res.json({
+            status: 'ok',
+            plugin: active.pluginName,
+            selectors: safeConfig,
+            expires_at: Date.now() + (5 * 60 * 1000)
+        });
     } catch (e) {
-        res.json({ status: 'ok' });
+        console.error('Selectors error:', e.message);
+        res.status(500).json({ status: 'error', message: 'Server error' });
     }
 });
 
@@ -946,27 +978,30 @@ app.post('/api/selectors', pluginSessionMiddleware, (req, res) => {
 
 app.post('/api/secret', pluginSessionMiddleware, (req, res) => {
     try {
-        const pluginName = safeDecodePlugin(req.pluginSession?.plugin_name || req.body.plugin_name || '');
-        
-        // Cek nama asli atau nama dengan emoji kardus
-        let config = SELECTOR_CONFIG[pluginName];
-        if (!config && (pluginName.includes('MovieBox') || pluginName === '')) {
-            config = SELECTOR_CONFIG['MovieBox\uD83D\uDCE6'];
+        const active = requireActivePluginSession(req, res);
+        if (!active.ok) return res.status(active.statusCode).json(active.error);
+
+        let config = SELECTOR_CONFIG[active.pluginName];
+        if (!config && active.pluginName.includes('MovieBox')) {
+            config = SELECTOR_CONFIG['MovieBox📦'];
         }
 
-        if (config && config.type === 'api_secret') {
-            return res.json({
-                status: 'ok',
-                secret_key_default: config.secret_key_default,
-                secret_key_alt: config.secret_key_alt,
-                k1: config.secret_key_default,
-                k2: config.secret_key_alt
-            });
+        if (!config || config.type !== 'api_secret') {
+            return res.status(404).json({ status: 'error', message: 'Secret config not found' });
         }
 
-        res.json({ status: 'ok', message: 'Bypassed' });
+        db.logAccess(active.licenseKey, 'SECRET_OK', getClientIP(req), `plugin:${active.pluginName}`, active.deviceId);
+        return res.json({
+            status: 'ok',
+            secret_key_default: config.secret_key_default,
+            secret_key_alt: config.secret_key_alt,
+            k1: config.secret_key_default,
+            k2: config.secret_key_alt,
+            expires_at: Date.now() + (5 * 60 * 1000)
+        });
     } catch (e) {
-        res.json({ status: 'ok' });
+        console.error('Secret error:', e.message);
+        res.status(500).json({ status: 'error', message: 'Server error' });
     }
 });
 
