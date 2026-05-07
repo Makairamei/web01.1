@@ -251,7 +251,15 @@ function getSafeDeviceId(req, rawDeviceId) {
     if (deviceId && deviceId.toLowerCase() !== 'unknown' && deviceId.toLowerCase() !== 'null') {
         return deviceId;
     }
-    return req.cookies?.cs_device_id || '';
+    const cookie = req.cookies?.cs_device_id;
+    if (cookie) return cookie;
+    // Fallback: generate stable device ID from IP
+    const ip = getClientIP(req);
+    if (ip) {
+        const hash = require('crypto').createHash('sha256').update(ip + '_cs_device').digest('hex').substring(0, 12);
+        return `auto_${hash}`;
+    }
+    return '';
 }
 
 // Keep a short-lived IP bridge so recent validation traffic can be correlated.
@@ -287,15 +295,23 @@ function resolveLicenseForRequest(req, {
     const cleanDeviceModel = cleanInput(deviceModel || 'Android Device');
     const cleanPluginName = safeDecodePlugin(pluginName || '');
 
-    if (!cleanDeviceId || cleanDeviceId.toLowerCase() === 'unknown' || cleanDeviceId.toLowerCase() === 'null') {
-        return { ok: false, statusCode: 400, error: { status: 'error', message: 'Device ID tidak valid.', reason: 'invalid_device' } };
+    // If plugin sends "unknown" device_id, generate a stable fallback from IP hash
+    // so the request isn't rejected but device-limit still works per-IP.
+    let effectiveDeviceId = cleanDeviceId;
+    if (!effectiveDeviceId || effectiveDeviceId.toLowerCase() === 'unknown' || effectiveDeviceId.toLowerCase() === 'null') {
+        if (ip) {
+            const hash = require('crypto').createHash('sha256').update(ip + '_cs_device').digest('hex').substring(0, 12);
+            effectiveDeviceId = `auto_${hash}`;
+        } else {
+            return { ok: false, statusCode: 400, error: { status: 'error', message: 'Device ID tidak valid.', reason: 'invalid_device' } };
+        }
     }
 
     if (allowRecovery) {
         const licCheck = db.getLicenseByKey(resolvedKey);
         if (!resolvedKey || !licCheck || licCheck.status !== 'active') {
-            if (cleanDeviceId) {
-                const devRecord = db.get("SELECT license_key FROM devices WHERE device_id = ? ORDER BY last_seen DESC LIMIT 1", [cleanDeviceId]);
+            if (effectiveDeviceId) {
+                const devRecord = db.get("SELECT license_key FROM devices WHERE device_id = ? ORDER BY last_seen DESC LIMIT 1", [effectiveDeviceId]);
                 if (devRecord?.license_key) {
                     const validLic = db.getLicenseByKey(devRecord.license_key);
                     if (validLic?.status === 'active') {
@@ -330,11 +346,11 @@ function resolveLicenseForRequest(req, {
     }
 
     if (!resolvedKey) {
-        db.logAccess('', 'VERIFY_FAIL', ip, `device:${cleanDeviceId} plugin:${cleanPluginName} reason:NO_KEY`, cleanDeviceId);
+        db.logAccess('', 'VERIFY_FAIL', ip, `device:${effectiveDeviceId} plugin:${cleanPluginName} reason:NO_KEY`, effectiveDeviceId);
         return { ok: false, statusCode: 401, error: { status: 'error', message: 'Lisensi tidak ditemukan di plugin.', reason: 'no_key' } };
     }
 
-    const result = db.validateLicense(resolvedKey, ip, cleanDeviceId, cleanDeviceModel, action);
+    const result = db.validateLicense(resolvedKey, ip, effectiveDeviceId, cleanDeviceModel, action);
     if (!result.valid) {
         const messages = {
             not_found: 'Lisensi tidak ditemukan',
@@ -344,7 +360,7 @@ function resolveLicenseForRequest(req, {
             device_blocked: 'Perangkat ini diblokir',
             ip_blocked: 'IP ini diblokir'
         };
-        db.logAccess(resolvedKey, 'VERIFY_FAIL', ip, `reason:${result.reason} action:${action} plugin:${cleanPluginName}`, cleanDeviceId);
+        db.logAccess(resolvedKey, 'VERIFY_FAIL', ip, `reason:${result.reason} action:${action} plugin:${cleanPluginName}`, effectiveDeviceId);
         return {
             ok: false,
             statusCode: 403,
@@ -357,14 +373,14 @@ function resolveLicenseForRequest(req, {
     }
 
     if (result.isNewDevice) {
-        db.logAccess(resolvedKey, 'DEVICE_REGISTERED', ip, `device:${cleanDeviceId} model:${cleanDeviceModel} plugin:${cleanPluginName} via ${action.toLowerCase()}`, cleanDeviceId);
+        db.logAccess(resolvedKey, 'DEVICE_REGISTERED', ip, `device:${effectiveDeviceId} model:${cleanDeviceModel} plugin:${cleanPluginName} via ${action.toLowerCase()}`, effectiveDeviceId);
     }
 
     createIPSession(ip, resolvedKey);
     return {
         ok: true,
         key: resolvedKey,
-        deviceId: cleanDeviceId,
+        deviceId: effectiveDeviceId,
         deviceModel: cleanDeviceModel,
         pluginName: cleanPluginName,
         ip,
