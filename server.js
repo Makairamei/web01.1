@@ -169,6 +169,20 @@ function safeDecodePlugin(val) {
     return decoded.replace(/[^\x00-\x7F]/g, "").trim().substring(0, 500);
 }
 
+// Tolerant SELECTOR_CONFIG lookup: plugin names sent by clients are stripped of
+// non-ASCII chars (emojis) by safeDecodePlugin(), but config keys may still
+// contain emojis. Try direct match first, then fall back to ASCII-stripped match.
+function findSelectorConfig(asciiName) {
+    if (!asciiName) return null;
+    if (SELECTOR_CONFIG[asciiName]) return SELECTOR_CONFIG[asciiName];
+    const target = asciiName.replace(/[^\x00-\x7F]/g, '').trim();
+    for (const key of Object.keys(SELECTOR_CONFIG)) {
+        const stripped = key.replace(/[^\x00-\x7F]/g, '').trim();
+        if (stripped === target) return SELECTOR_CONFIG[key];
+    }
+    return null;
+}
+
 function getLocalIP() {
     const interfaces = os.networkInterfaces();
     for (const name of Object.keys(interfaces)) {
@@ -993,7 +1007,7 @@ app.post('/api/selectors', pluginSessionMiddleware, (req, res) => {
         const active = requireActivePluginSession(req, res);
         if (!active.ok) return res.status(active.statusCode).json(active.error);
 
-        const config = SELECTOR_CONFIG[active.pluginName];
+        const config = findSelectorConfig(active.pluginName);
         if (!config || config.type === 'api_secret') {
             return res.status(404).json({ status: 'error', message: 'Selector config not found' });
         }
@@ -1024,11 +1038,7 @@ app.post('/api/secret', pluginSessionMiddleware, (req, res) => {
         const active = requireActivePluginSession(req, res);
         if (!active.ok) return res.status(active.statusCode).json(active.error);
 
-        let config = SELECTOR_CONFIG[active.pluginName];
-        if (!config && active.pluginName.includes('MovieBox')) {
-            config = SELECTOR_CONFIG['MovieBox📦'];
-        }
-
+        const config = findSelectorConfig(active.pluginName);
         if (!config || config.type !== 'api_secret') {
             return res.status(404).json({ status: 'error', message: 'Secret config not found' });
         }
