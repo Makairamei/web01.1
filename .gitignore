@@ -17,3 +17,5 @@ npm-debug.log*
 check_vps.js
 deploy.js
 fix_route.js
+
+_deploy_run.js
