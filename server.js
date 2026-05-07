@@ -613,6 +613,15 @@ app.get('/api/discover', rateLimit(60000, 30), (req, res) => {
             }
         }
 
+        // Strategy 1b: In-memory IP bridge (fastest, populated on repo.json access)
+        const memSession = ip ? ipSessions.get(ip) : null;
+        if (memSession && memSession.key && Date.now() < memSession.expiresAt) {
+            const lic = db.getLicenseByKey(memSession.key);
+            if (lic && lic.status === 'active') {
+                return res.json({ status: 'active', key: memSession.key, expires_at: lic.expires_at });
+            }
+        }
+
         // Strategy 2: Cookie-based session lookup
         const csDeviceId = req.cookies && req.cookies.cs_device_id;
         if (csDeviceId) {
@@ -816,6 +825,13 @@ app.get('/r/:key/repo.json', (req, res) => {
         return res.status(access.statusCode).json({ status: 'error', message: access.error });
     }
     const key = req.params.key;
+    const ip = getClientIP(req);
+    // Bridge IP -> license_key so /api/discover (strategy 3) can hand the key
+    // to the plugin which has no cookie jar.
+    try {
+        createIPSession(ip, key);
+        db.logAccess(key, 'REPO_ACCESS', ip, 'repo.json', '');
+    } catch (e) {}
     const serverUrl = getBaseServerUrl(req);
     res.json({
         name: "CS Premium (Fixed)",
@@ -838,6 +854,11 @@ app.get('/r/:key/:token/repo.json', (req, res) => {
         }
         const key = req.params.key;
         const token = req.params.token;
+        const ip = getClientIP(req);
+        try {
+            createIPSession(ip, key);
+            db.logAccess(key, 'REPO_ACCESS', ip, 'token-repo.json', '');
+        } catch (e) {}
         const serverUrl = getBaseServerUrl(req);
 
         res.json({
@@ -859,6 +880,12 @@ app.get(['/r/:key/plugins.json', '/r/:key/:token/plugins.json'], async (req, res
         if (!access.ok) {
             return res.status(access.statusCode).json({ status: 'error', message: access.error });
         }
+        // Refresh IP bridge so /api/discover can hand the key back to the plugin.
+        try {
+            const ip = getClientIP(req);
+            createIPSession(ip, access.key);
+            db.logAccess(access.key, 'REPO_ACCESS', ip, 'plugins.json', '');
+        } catch (e) {}
         let finalPlugins = [];
         
         // 1. ALWAYS ADD LOCAL PLUGINS FIRST
