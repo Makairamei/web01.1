@@ -8,7 +8,10 @@ module.exports = {
 
     // ─── Plugin Anime/Series (scraper HTML) ─────────────────
 
-    "AnimeSail": {
+    // NOTE: Key harus PERSIS sama dengan `override var name` di plugin.
+    // Banyak plugin pakai emoji, jadi key di bawah ini mengandung emoji juga.
+
+    "AnimeSail\uD83C\uDF5F": {  // "AnimeSail🍟"
         server_selector: ".mobius > .mirror > option",
         value_attr: "data-em",
         iframe_selector: "iframe",
@@ -17,7 +20,7 @@ module.exports = {
         type: "standard"
     },
 
-    "AnichinMoe": {
+    "Anichin \uD83D\uDD25": {  // "Anichin 🔥" (dengan spasi)
         server_selector: ".mobius option",
         value_attr: "value",
         iframe_selector: "iframe",
@@ -26,7 +29,7 @@ module.exports = {
         type: "standard"
     },
 
-    "Donghub": {
+    "Donghub\uD83D\uDC09": {  // "Donghub🐉"
         server_selector: ".mobius option",
         value_attr: "value",
         iframe_selector: "iframe",
@@ -35,11 +38,11 @@ module.exports = {
         type: "standard"
     },
 
-    "Samehadaku": {
+    "Samehadaku\u26E9\uFE0F": {  // "Samehadaku⛩️"
         server_selector: "div#downloadb li",
         link_selector: "a",
         quality_selector: "strong",
-        type: "download_links"    // berbeda: link langsung, bukan iframe
+        type: "download_links"
     },
 
     // ─── Plugin API-based (pakai secret key) ─────────────────
