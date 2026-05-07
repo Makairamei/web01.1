@@ -169,9 +169,6 @@ function safeDecodePlugin(val) {
     return decoded.replace(/[^\x00-\x7F]/g, "").trim().substring(0, 500);
 }
 
-// Tolerant SELECTOR_CONFIG lookup: plugin names sent by clients are stripped of
-// non-ASCII chars (emojis) by safeDecodePlugin(), but config keys may still
-// contain emojis. Try direct match first, then fall back to ASCII-stripped match.
 function findSelectorConfig(asciiName) {
     if (!asciiName) return null;
     if (SELECTOR_CONFIG[asciiName]) return SELECTOR_CONFIG[asciiName];
