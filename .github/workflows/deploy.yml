@@ -1,0 +1,61 @@
+name: Deploy web01.1 to VPS
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [ main ]
+    paths:
+      - '**/*.js'
+      - 'package.json'
+      - 'package-lock.json'
+      - 'server.js'
+      - 'selector_config.js'
+      - '.github/workflows/deploy.yml'
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Deploy via SSH
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.SSH_HOST }}
+          username: ${{ secrets.SSH_USER }}
+          password: ${{ secrets.SSH_PASSWORD }}
+          port: 22
+          script: |
+            set -e
+            # locate or clone project directory
+            DIR=$(find / -type d -name web01.1 2>/dev/null | head -n 1 || true)
+            if [ -z "$DIR" ]; then
+              DIR="/root/web01.1"
+              if [ ! -d "$DIR" ]; then
+                git clone https://github.com/Makairamei/web01.1.git "$DIR"
+              fi
+            fi
+            cd "$DIR"
+            # ensure clean and up-to-date
+            git fetch --all
+            git reset --hard origin/main
+            # ensure Node.js and pm2
+            if ! command -v node >/dev/null 2>&1; then
+              if command -v apt-get >/dev/null 2>&1; then
+                curl -fsSL https://deb.nodesource.com/setup_18.x | bash -
+                apt-get install -y nodejs
+              fi
+            fi
+            if [ -f package-lock.json ]; then
+              npm ci --omit=dev || npm install --omit=dev
+            else
+              npm install --omit=dev || true
+            fi
+            if ! command -v pm2 >/dev/null 2>&1; then
+              npm install -g pm2
+            fi
+            # restart or start service
+            if pm2 list | grep -q "web01"; then
+              pm2 reload web01
+            else
+              pm2 start server.js --name web01
+            fi
+            pm2 save || true
